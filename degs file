@@ -1,0 +1,108 @@
+#loading used dataset(count data):
+gene_ex <- read.csv("D:/career/R projects/MASRI/GSE104836_gene_exp.txt", header=TRUE)
+View(gene_ex)
+
+#droping unused columns:
+#unused meta data:
+gene_ex$Pos<- NULL
+gene_ex$Strand<- NULL
+gene_ex$Length<- NULL
+#normalized data columns:
+gene_ex[22:42]<- NULL
+
+
+#store all samples names at list.. getting them from columns names except the first one("gene" column):
+colom_names<- as.list(colnames(gene_ex))
+colom_names<-colom_names[-1]
+colom_names
+
+
+#create two lists for both normal and cancer samles:
+cancer<- list()
+normal<- list()
+
+
+#looping on all columns to classify every sample if normal or cancer and store it in last lists:
+for (col_name in colom_names){
+  colom_num<- which(colnames(gene_ex)==col_name)
+  
+  if (colom_num %% 2 ==0){
+    cancer[length(cancer)+1]<- (col_name)
+  }
+  
+  if (colom_num %% 2 ==1){
+    normal[length(normal)+1]<- (col_name)
+    
+  }
+}
+
+
+#create new list that has rearranged samples names as all cancered together,and also normal ones:
+rearrangment<- c(cancer,normal)
+
+#rearrange the dataset accordding to last list:
+gene_ex<- gene_ex[,match(rearrangment,colom_names)]
+
+#create meta data table:
+
+col_names<- as.list(colnames(gene_ex))
+
+
+sample_type<- list()
+
+for (col_name in col_names){
+  colom_num<- which(colnames(gene_ex)==col_name)
+  
+  if (colom_num <= 10){
+    sample_type[length(sample_type)+1]<- ("normal")
+  }
+  
+  if (colom_num > 10){
+    sample_type[length(sample_type)+1]<- ("cancer")
+  }
+  
+}
+
+meta_data<- data.frame(sample=unlist(col_names),type=unlist(sample_type))
+
+#running deseq2:
+
+#some edits at count data to be col number of count data equal row number of meta data:
+gene_ex <- gene_ex[!duplicated(gene_ex$gene), ]
+rownames(gene_ex)<- gene_ex$gene
+gene_ex<- gene_ex[,-1]
+
+#facor design col:
+meta_data$type<- as.factor(meta_data$type)
+
+
+dds <- DESeqDataSetFromMatrix(countData = gene_ex,
+                              colData = meta_data,
+                              design= ~  type)
+dds <- DESeq(dds)
+
+des_res<- results(dds, contrast = c("type", "normal", "cancer"))
+
+DEGs <- subset(des_res, abs(log2FoldChange) > 3 & padj < 0.05)
+DEGs=as.data.frame(DEGs)
+
+
+write.csv(DEGs,file = "DEGS2.csv", row.names = TRUE)
+
+# visualization of significant genes by Enhancedvolcano plot:
+
+DEGS <- DEGS[!duplicated(DEGS$...1), ]
+rownames(DEGS)<- DEGS$...1
+DEGS<- DEGS[,-1]
+
+EnhancedVolcano(
+  DEGS,
+  lab = rownames(DEGS),
+  x = 'log2FoldChange',
+  y = 'pvalue',
+  xlim = c(-5, 5), 
+  title = 'Volcano Plot of DEGs',
+  labSize = 3.5,
+  labCol = "black",
+  pCutoff = 0.05,    
+  FCcutoff = 3,    )
